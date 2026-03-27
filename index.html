@@ -1311,7 +1311,7 @@
     document.body.insertAdjacentHTML('beforeend', supabaseConfigHTML);
 
     // Supabase State
-    let supabase = null;
+    let supabaseClient = null;
     let supabaseConnected = false;
 
     // Data Store (local fallback)
@@ -1380,10 +1380,10 @@
 
     async function connectToSupabase(url, key, saveConfig = true) {
       try {
-        supabase = window.supabase.createClient(url, key);
+        supabaseClient = window.supabase.createClient(url, key);
         
         // Test connection
-        const { data, error } = await supabase.from('recipes').select('id').limit(1);
+        const { data, error } = await supabaseClient.from('recipes').select('id').limit(1);
         
         if (error) {
           console.error('Supabase error:', error);
@@ -1412,9 +1412,9 @@
       
       try {
         const [recipesRes, mealPlanRes, groceriesRes] = await Promise.all([
-          supabase.from('recipes').select('*'),
-          supabase.from('meal_plan').select('*'),
-          supabase.from('groceries').select('*')
+          supabaseClient.from('recipes').select('*'),
+          supabaseClient.from('meal_plan').select('*'),
+          supabaseClient.from('groceries').select('*')
         ]);
         
         if (recipesRes.data) Store.recipes = recipesRes.data;
@@ -1453,39 +1453,36 @@
       },
 
       async syncToSupabase(key, data) {
-        if (!supabase) return;
+        if (!supabaseClient) return;
         
         try {
           switch(key) {
             case 'recipes':
-              // Sync recipes
-              const { data: existing } = await supabase.from('recipes').select('id');
+              const { data: existing } = await supabaseClient.from('recipes').select('id');
               const existingIds = existing.map(r => r.id);
               const newIds = data.map(r => r.id);
               
-              // Delete removed recipes
               const toDelete = existingIds.filter(id => !newIds.includes(id));
               if (toDelete.length > 0) {
-                await supabase.from('recipes').delete().in('id', toDelete);
+                await supabaseClient.from('recipes').delete().in('id', toDelete);
               }
               
-              // Upsert recipes
               for (const recipe of data) {
-                await supabase.from('recipes').upsert(recipe);
+                await supabaseClient.from('recipes').upsert(recipe);
               }
               break;
               
             case 'mealPlan':
-              await supabase.from('meal_plan').delete().neq('id', 0);
+              await supabaseClient.from('meal_plan').delete().neq('id', 0);
               for (const [date, recipeId] of Object.entries(data)) {
-                await supabase.from('meal_plan').upsert({ date, recipe_id: recipeId });
+                await supabaseClient.from('meal_plan').upsert({ date, recipe_id: recipeId });
               }
               break;
               
             case 'groceries':
-              await supabase.from('groceries').delete().neq('id', 0);
+              await supabaseClient.from('groceries').delete().neq('id', 0);
               for (let i = 0; i < data.length; i++) {
-                await supabase.from('groceries').upsert({ ...data[i], position: i });
+                await supabaseClient.from('groceries').upsert({ ...data[i], position: i });
               }
               break;
           }
