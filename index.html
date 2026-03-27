@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     *, *::before, *::after {
       box-sizing: border-box;
@@ -1274,8 +1275,47 @@
   </div>
 
   <script>
-    // Data Store
-    const Store = {
+    // Supabase Configuration Modal
+    const supabaseConfigHTML = `
+      <div class="modal-overlay" id="supabaseConfigModal">
+        <div class="modal" style="max-width: 450px;">
+          <div class="modal-header">
+            <h3>Supabase Configuratie</h3>
+            <button class="modal-close" id="closeSupabaseConfig">×</button>
+          </div>
+          <div class="modal-body">
+            <p style="margin-bottom: 16px; color: var(--text-secondary); font-size: 14px;">
+              Vul je Supabase project URL en anon key in. Deze vind je in je Supabase dashboard onder Settings → API.
+            </p>
+            <div class="form-group">
+              <label for="supabaseUrl">Project URL</label>
+              <input type="url" id="supabaseUrl" placeholder="https://xxxxx.supabase.co">
+            </div>
+            <div class="form-group">
+              <label for="supabaseKey">Anon Key</label>
+              <input type="text" id="supabaseKey" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+            </div>
+            <div style="background: rgba(74, 124, 89, 0.08); padding: 12px; border-radius: 8px; margin-top: 16px;">
+              <p style="font-size: 13px; color: var(--text-secondary); margin: 0;">
+                <strong style="color: var(--secondary);">Tip:</strong> Klik op "Verbinden" om te testen of de verbinding werkt.
+              </p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" id="skipSupabaseConfig">Overslaan (lokaal)</button>
+            <button class="btn btn-primary" id="connectSupabase">Verbinden</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', supabaseConfigHTML);
+
+    // Supabase State
+    let supabase = null;
+    let supabaseConnected = false;
+
+    // Data Store (local fallback)
+    const LocalStore = {
       recipes: JSON.parse(localStorage.getItem('recipes')) || [],
       mealPlan: JSON.parse(localStorage.getItem('mealPlan')) || {},
       groceries: JSON.parse(localStorage.getItem('groceries')) || [],
@@ -1312,9 +1352,157 @@
     let confirmCallback = null;
     let draggedItem = null;
 
+    // Supabase Functions
+    function initSupabase() {
+      const savedUrl = localStorage.getItem('supabaseUrl');
+      const savedKey = localStorage.getItem('supabaseKey');
+      
+      if (savedUrl && savedKey) {
+        connectToSupabase(savedUrl, savedKey, false);
+      } else {
+        showSupabaseConfigModal();
+      }
+    }
+
+    function showSupabaseConfigModal() {
+      const modal = document.getElementById('supabaseConfigModal');
+      if (modal) {
+        modal.classList.add('active');
+        document.getElementById('supabaseUrl').value = localStorage.getItem('supabaseUrl') || '';
+        document.getElementById('supabaseKey').value = localStorage.getItem('supabaseKey') || '';
+      }
+    }
+
+    function hideSupabaseConfigModal() {
+      const modal = document.getElementById('supabaseConfigModal');
+      if (modal) modal.classList.remove('active');
+    }
+
+    async function connectToSupabase(url, key, saveConfig = true) {
+      try {
+        supabase = window.supabase.createClient(url, key);
+        
+        // Test connection
+        const { data, error } = await supabase.from('recipes').select('id').limit(1);
+        
+        if (error) {
+          console.error('Supabase error:', error);
+          alert('Kon niet verbinden met Supabase. Controleer je URL en key.');
+          return false;
+        }
+        
+        supabaseConnected = true;
+        if (saveConfig) {
+          localStorage.setItem('supabaseUrl', url);
+          localStorage.setItem('supabaseKey', key);
+        }
+        
+        hideSupabaseConfigModal();
+        loadAllData();
+        return true;
+      } catch (err) {
+        console.error('Connection error:', err);
+        alert('Kon niet verbinden met Supabase: ' + err.message);
+        return false;
+      }
+    }
+
+    async function loadAllData() {
+      if (!supabaseConnected) return;
+      
+      try {
+        const [recipesRes, mealPlanRes, groceriesRes] = await Promise.all([
+          supabase.from('recipes').select('*'),
+          supabase.from('meal_plan').select('*'),
+          supabase.from('groceries').select('*')
+        ]);
+        
+        if (recipesRes.data) Store.recipes = recipesRes.data;
+        if (mealPlanRes.data) {
+          Store.mealPlan = {};
+          mealPlanRes.data.forEach(item => {
+            Store.mealPlan[item.date] = item.recipe_id;
+          });
+        }
+        if (groceriesRes.data) {
+          Store.groceries = groceriesRes.data.sort((a, b) => a.position - b.position);
+          Store.checkedGroceries = groceriesRes.data.filter(g => g.checked).map(g => g.id);
+        }
+        
+        renderRecipes();
+        renderCalendar();
+        renderGroceryList();
+      } catch (err) {
+        console.error('Load error:', err);
+      }
+    }
+
+    // Store (works with both local and Supabase)
+    const Store = {
+      recipes: [],
+      mealPlan: {},
+      groceries: [],
+      checkedGroceries: [],
+
+      async save(key, data) {
+        if (supabaseConnected) {
+          await this.syncToSupabase(key, data);
+        } else {
+          localStorage.setItem(key, JSON.stringify(data));
+        }
+      },
+
+      async syncToSupabase(key, data) {
+        if (!supabase) return;
+        
+        try {
+          switch(key) {
+            case 'recipes':
+              // Sync recipes
+              const { data: existing } = await supabase.from('recipes').select('id');
+              const existingIds = existing.map(r => r.id);
+              const newIds = data.map(r => r.id);
+              
+              // Delete removed recipes
+              const toDelete = existingIds.filter(id => !newIds.includes(id));
+              if (toDelete.length > 0) {
+                await supabase.from('recipes').delete().in('id', toDelete);
+              }
+              
+              // Upsert recipes
+              for (const recipe of data) {
+                await supabase.from('recipes').upsert(recipe);
+              }
+              break;
+              
+            case 'mealPlan':
+              await supabase.from('meal_plan').delete().neq('id', 0);
+              for (const [date, recipeId] of Object.entries(data)) {
+                await supabase.from('meal_plan').upsert({ date, recipe_id: recipeId });
+              }
+              break;
+              
+            case 'groceries':
+              await supabase.from('groceries').delete().neq('id', 0);
+              for (let i = 0; i < data.length; i++) {
+                await supabase.from('groceries').upsert({ ...data[i], position: i });
+              }
+              break;
+          }
+        } catch (err) {
+          console.error('Sync error:', err);
+          localStorage.setItem(key, JSON.stringify(data));
+        }
+      },
+
+      generateId() {
+        return Date.now().toString(36) + Math.random().toString(36).substr(2);
+      }
+    };
+
     // Initialize
     document.addEventListener('DOMContentLoaded', () => {
-      migrateData();
+      initSupabaseConfigEvents();
       initNavigation();
       initRecipeEvents();
       initCalendarEvents();
@@ -1328,11 +1516,39 @@
       console.log('URL section exists:', !!document.querySelector('.url-import-section'));
     });
 
+    function initSupabaseConfigEvents() {
+      document.getElementById('closeSupabaseConfig').addEventListener('click', hideSupabaseConfigModal);
+      document.getElementById('skipSupabaseConfig').addEventListener('click', () => {
+        hideSupabaseConfigModal();
+        migrateData();
+        renderRecipes();
+        renderCalendar();
+        renderGroceryList();
+      });
+      document.getElementById('connectSupabase').addEventListener('click', async () => {
+        const url = document.getElementById('supabaseUrl').value.trim();
+        const key = document.getElementById('supabaseKey').value.trim();
+        if (url && key) {
+          await connectToSupabase(url, key);
+        } else {
+          alert('Vul beide velden in');
+        }
+      });
+    }
+
     function migrateData() {
       if (localStorage.getItem('defaultGroceries') || localStorage.getItem('manualGroceries')) {
         localStorage.removeItem('defaultGroceries');
         localStorage.removeItem('manualGroceries');
       }
+      LocalStore.recipes = JSON.parse(localStorage.getItem('recipes')) || [];
+      LocalStore.mealPlan = JSON.parse(localStorage.getItem('mealPlan')) || {};
+      LocalStore.groceries = JSON.parse(localStorage.getItem('groceries')) || [];
+      LocalStore.checkedGroceries = JSON.parse(localStorage.getItem('checkedGroceries')) || [];
+      Store.recipes = LocalStore.recipes;
+      Store.mealPlan = LocalStore.mealPlan;
+      Store.groceries = LocalStore.groceries;
+      Store.checkedGroceries = LocalStore.checkedGroceries;
     }
 
     // Navigation
