@@ -1852,15 +1852,17 @@
 
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i];
-        const lowerLine = line.toLowerCase();
+        const lowerLine = line.toLowerCase().trim();
 
-        if (line.match(/^(bereiding|bereidingswijze|bereidingsstappen|instructie|stappen|bereid|how to|instructions|directions|serveeridee|garneer)/i)) {
+        if (lowerLine.match(/^(bereiding|bereidingswijze|bereidingsstappen|instructie|how to|instructions|directions|serveeridee)/i)) {
           currentSection = 'instructions';
           continue;
         }
 
-        if (line.match(/^stap\s*\d+/i)) {
+        if (lowerLine.match(/^stap\s*\d+/i) || lowerLine.match(/^\d+\s*[.):]/)) {
           currentSection = 'instructions';
+          instructionLines.push(line);
+          continue;
         }
 
         if (currentSection === 'ingredients') {
@@ -1869,6 +1871,9 @@
           
           if (!hasVerb && cleanedLine.length > 1 && cleanedLine.length < 150) {
             ingredientLines.push(cleanedLine);
+          } else if (hasVerb && cleanedLine.length > 30 && lowerLine.startsWith('bak')) {
+            currentSection = 'instructions';
+            instructionLines.push(line);
           }
         } else if (currentSection === 'instructions') {
           if (line.length > 5) {
