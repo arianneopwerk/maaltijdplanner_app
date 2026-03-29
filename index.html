@@ -542,6 +542,27 @@
       font-size: 22px;
     }
 
+    .shopping-section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .clear-planned-btn {
+      font-size: 12px;
+      padding: 4px 12px;
+      color: var(--text-secondary);
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+    }
+
+    .clear-planned-btn:hover {
+      color: var(--danger);
+      border-color: var(--danger);
+    }
+
     .shopping-list {
       background: var(--surface);
       border-radius: var(--radius-md);
@@ -570,7 +591,13 @@
       background: rgba(0,0,0,0.02);
     }
 
-    .shopping-item.checked .item-name {
+    .shopping-item.checked .item-name,
+    .shopping-item.checked input.item-name {
+      text-decoration: line-through;
+      color: var(--text-secondary);
+    }
+
+    .shopping-item.checked input.item-amount {
       text-decoration: line-through;
       color: var(--text-secondary);
     }
@@ -1174,7 +1201,10 @@
         </div>
 
         <div class="shopping-section" id="plannedGroceriesSection" style="display: none;">
-          <h3><span>📅</span> Van Geplande Maaltijden</h3>
+          <div class="shopping-section-header">
+            <h3><span>📅</span> Van Geplande Maaltijden</h3>
+            <button class="clear-planned-btn" id="clearPlanned">Alles wissen</button>
+          </div>
           <div id="plannedGroceries"></div>
         </div>
       </section>
@@ -1443,6 +1473,7 @@
       mealPlan: {},
       groceries: [],
       checkedGroceries: [],
+      plannedGroceries: [],
 
       async save(key, data) {
         if (supabaseConnected) {
@@ -1483,6 +1514,13 @@
               await supabaseClient.from('groceries').delete().neq('id', 0);
               for (let i = 0; i < data.length; i++) {
                 await supabaseClient.from('groceries').upsert({ ...data[i], position: i });
+              }
+              break;
+              
+            case 'plannedGroceries':
+              await supabaseClient.from('planned_groceries').delete().neq('id', 0);
+              for (let i = 0; i < data.length; i++) {
+                await supabaseClient.from('planned_groceries').upsert({ ...data[i], position: i });
               }
               break;
           }
@@ -1542,10 +1580,12 @@
       LocalStore.mealPlan = JSON.parse(localStorage.getItem('mealPlan')) || {};
       LocalStore.groceries = JSON.parse(localStorage.getItem('groceries')) || [];
       LocalStore.checkedGroceries = JSON.parse(localStorage.getItem('checkedGroceries')) || [];
+      LocalStore.plannedGroceries = JSON.parse(localStorage.getItem('plannedGroceries')) || [];
       Store.recipes = LocalStore.recipes;
       Store.mealPlan = LocalStore.mealPlan;
       Store.groceries = LocalStore.groceries;
       Store.checkedGroceries = LocalStore.checkedGroceries;
+      Store.plannedGroceries = LocalStore.plannedGroceries;
     }
 
     // Navigation
@@ -1859,10 +1899,17 @@
       document.getElementById('generateList').addEventListener('click', generateShoppingList);
       document.getElementById('addItem').addEventListener('click', addGrocery);
       document.getElementById('printList').addEventListener('click', () => window.print());
+      document.getElementById('clearPlanned').addEventListener('click', clearPlannedGroceries);
       
       document.getElementById('newItemName').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') addGrocery();
       });
+    }
+
+    function clearPlannedGroceries() {
+      Store.plannedGroceries = [];
+      Store.save('plannedGroceries', Store.plannedGroceries);
+      document.getElementById('plannedGroceriesSection').style.display = 'none';
     }
 
     // Recipe Functions
@@ -2327,32 +2374,74 @@
                   }
                 }
               } else {
-                ingredientsMap[key] = { ...ing, id: Store.generateId() };
+                ingredientsMap[key] = { ...ing, id: Store.generateId(), checked: false };
               }
             });
           }
         }
       }
 
-      const ingredients = Object.values(ingredientsMap);
+      Store.plannedGroceries = Object.values(ingredientsMap);
+      Store.save('plannedGroceries', Store.plannedGroceries);
       
-      if (ingredients.length === 0) {
+      if (Store.plannedGroceries.length === 0) {
         plannedSection.style.display = 'none';
         return;
       }
 
       plannedSection.style.display = 'block';
+      renderPlannedGroceries();
+    }
+
+    function renderPlannedGroceries() {
+      const plannedContainer = document.getElementById('plannedGroceries');
       
       plannedContainer.innerHTML = `
         <div class="shopping-list">
-          ${ingredients.map(item => `
+          ${Store.plannedGroceries.map((item, index) => `
             <div class="shopping-item">
-              <span class="item-name">${item.name}</span>
-              <span class="item-amount">${item.amount} ${item.unit}</span>
+              <span class="drag-handle">⋮⋮</span>
+              <input type="checkbox" ${item.checked ? 'checked' : ''} data-index="${index}" class="planned-checkbox">
+              <input type="text" class="item-amount" value="${item.amount}" data-index="${index}" placeholder="Aantal">
+              <input type="text" class="item-name" value="${item.name}" data-index="${index}">
+              <button class="delete-item" data-index="${index}" title="Verwijderen">×</button>
             </div>
           `).join('')}
         </div>
       `;
+
+      plannedContainer.querySelectorAll('.planned-checkbox').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+          const index = parseInt(e.target.dataset.index);
+          Store.plannedGroceries[index].checked = e.target.checked;
+          Store.save('plannedGroceries', Store.plannedGroceries);
+        });
+      });
+
+      plannedContainer.querySelectorAll('.item-amount').forEach(input => {
+        input.addEventListener('change', (e) => {
+          const index = parseInt(e.target.dataset.index);
+          Store.plannedGroceries[index].amount = e.target.value;
+          Store.save('plannedGroceries', Store.plannedGroceries);
+        });
+      });
+
+      plannedContainer.querySelectorAll('.item-name').forEach(input => {
+        input.addEventListener('change', (e) => {
+          const index = parseInt(e.target.dataset.index);
+          Store.plannedGroceries[index].name = e.target.value;
+          Store.save('plannedGroceries', Store.plannedGroceries);
+        });
+      });
+
+      plannedContainer.querySelectorAll('.delete-item').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const index = parseInt(e.target.dataset.index);
+          Store.plannedGroceries.splice(index, 1);
+          Store.save('plannedGroceries', Store.plannedGroceries);
+          renderPlannedGroceries();
+        });
+      });
     }
 
     // Confirm Dialog

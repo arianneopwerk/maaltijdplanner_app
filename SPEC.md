@@ -71,7 +71,7 @@ Drie hoofdsecties via tab-navigatie:
 - **Opslag:** LocalStorage voor persistentie
 
 #### URL Import Details
-- Gebruikt CORS proxy (allorigins.win) om externe pagina's te laden
+- Gebruikt CORS proxy (corsproxy.io) om externe pagina's te laden
 - Parseert JSON-LD schema (standaard receptformaat)
 - Valideert en extraheert: naam, bereidingstijd, porties, ingrediënten
 - Fallback naar HTML parsing als geen JSON-LD aanwezig is
@@ -92,6 +92,8 @@ Drie hoofdsecties via tab-navigatie:
 - **Aanvinken:** Checkbox voor gekochte items (lokaal opgeslagen)
 - **Verwijderen:** X-knop om items te verwijderen
 - **Auto-genereren:** Op basis van geplande recepten in huidige maand
+- **Geplande boodschappen bewerken:** Verander aantallen of verwijder individuele items
+- **Alles wissen knop:** Verwijder alle geplande boodschappen in één klik
 - **Exporteren:** Print-vriendelijke weergave
 - **Geen categorieën:** Eenvoudige platte lijst, volgorde naar wens
 
@@ -170,6 +172,14 @@ groceries: [{
   id: string,
   name: string,
   amount: string
+}]
+
+plannedGroceries: [{
+  id: string,
+  name: string,
+  amount: string,
+  unit: string,
+  checked: boolean
 }]
 
 checkedGroceries: [string] // array of grocery ids
