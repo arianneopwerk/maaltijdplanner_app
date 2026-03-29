@@ -931,6 +931,12 @@
       font-size: 12px;
       color: var(--text-secondary);
       margin-top: 8px;
+      margin-bottom: 8px;
+    }
+
+    .url-import-section .btn-secondary {
+      font-size: 13px;
+      padding: 8px 16px;
     }
 
     .divider {
@@ -1202,7 +1208,7 @@
 
         <div class="shopping-section" id="plannedGroceriesSection" style="display: none;">
           <div class="shopping-section-header">
-            <h3><span>📅</span> Van Geplande Maaltijden</h3>
+            <h3><span>📅</span> <span id="plannedWeekLabel">Van Geplande Maaltijden</span></h3>
             <button class="clear-planned-btn" id="clearPlanned">Alles wissen</button>
           </div>
           <div id="plannedGroceries"></div>
@@ -1221,7 +1227,7 @@
       <div class="modal-body">
         <form id="recipeForm">
           <input type="hidden" id="recipeId">
-          <div id="urlImportSection" style="display: block;">
+          <div id="urlImportSection" class="url-import-section" style="display: block;">
             <label for="recipeUrl">Recept importeren van URL</label>
             <div class="url-input-row">
               <input type="url" id="recipeUrl" placeholder="https://example.com/recept">
@@ -1231,7 +1237,10 @@
                 <span id="fetchText">Haal Recept</span>
               </button>
             </div>
-            <p class="url-hint">Plak een link naar een recept en wij halen de ingrediënten automatisch eruit</p>
+            <p class="url-hint">Plak een link naar een recept en wij halen de ingrediënten automatisch eruit. Werkt met smulweb.nl, lekkerensimpel.com en allrecipes.com.</p>
+            <button type="button" class="btn btn-secondary" id="manualAddBtn" style="margin-top: 8px;">
+              <span>✏️</span> Handmatig toevoegen
+            </button>
           </div>
           <div class="divider" id="urlDivider"></div>
           <div class="form-group">
@@ -1412,12 +1421,12 @@
       try {
         supabaseClient = window.supabase.createClient(url, key);
         
-        // Test connection
-        const { data, error } = await supabaseClient.from('recipes').select('id').limit(1);
+        // Test connection with tables
+        const { data: recipesData, error: recipesError } = await supabaseClient.from('recipes').select('id').limit(1);
         
-        if (error) {
-          console.error('Supabase error:', error);
-          alert('Kon niet verbinden met Supabase. Controleer je URL en key.');
+        if (recipesError && recipesError.code !== 'PGRST204') {
+          console.error('Supabase error:', recipesError);
+          alert('Fout bij verbinden met Supabase: ' + recipesError.message);
           return false;
         }
         
@@ -1538,6 +1547,7 @@
     // Initialize
     document.addEventListener('DOMContentLoaded', () => {
       initSupabaseConfigEvents();
+      initSupabase();
       initNavigation();
       initRecipeEvents();
       initCalendarEvents();
@@ -1610,6 +1620,17 @@
       document.getElementById('saveRecipe').addEventListener('click', saveRecipe);
       document.getElementById('addIngredient').addEventListener('click', addIngredientField);
       document.getElementById('fetchRecipeBtn').addEventListener('click', fetchRecipeFromUrl);
+      document.getElementById('manualAddBtn').addEventListener('click', () => {
+        document.getElementById('recipeUrl').value = '';
+        document.getElementById('recipeName').value = '';
+        document.getElementById('recipePrepTime').value = '';
+        document.getElementById('recipeServings').value = '2';
+        const ingredientsList = document.getElementById('ingredientsList');
+        ingredientsList.innerHTML = '';
+        addIngredientField();
+        addIngredientField();
+        showUrlStatus('success', '✏️ Vul de gegevens handmatig in.');
+      });
 
       document.getElementById('recipeUrl').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') fetchRecipeFromUrl();
@@ -1667,13 +1688,32 @@
       icon.style.display = 'none';
       text.textContent = 'Laden...';
 
+      const proxies = [
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+        `https://corsproxy.io/?${encodeURIComponent(url)}`
+      ];
+
+      let html = null;
+      let lastError = null;
+
+      for (const proxyUrl of proxies) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          const response = await fetch(proxyUrl, { signal: controller.signal });
+          clearTimeout(timeoutId);
+          if (response.ok) {
+            html = await response.text();
+            break;
+          }
+          lastError = `returned ${response.status}`;
+        } catch (e) {
+          lastError = e.name === 'AbortError' ? 'timeout' : e.message;
+        }
+      }
+
       try {
-        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-        const response = await fetch(proxyUrl);
-        
-        if (!response.ok) throw new Error('Fetch failed');
-        
-        const html = await response.text();
+        if (!html) throw new Error(lastError || 'Geen proxy beschikbaar');
         
         const recipe = parseRecipeHtml(html, url);
         
@@ -1694,7 +1734,7 @@
         }
       } catch (error) {
         console.error('Fetch error:', error);
-        showUrlStatus('error', 'Kon de pagina niet laden. Probeer een andere URL.');
+        showUrlStatus('error', `⚠️ Website blokkeert het ophalen. Probeer smulweb.nl, lekkerensimpel.com of allrecipes.com.`);
       } finally {
         btn.disabled = false;
         spinner.style.display = 'none';
@@ -1704,7 +1744,8 @@
     }
 
     function showUrlStatus(type, message) {
-      const urlSection = document.querySelector('.url-import-section');
+      const urlSection = document.getElementById('urlImportSection');
+      if (!urlSection) return;
       urlSection.classList.remove('success', 'error');
       urlSection.classList.add(type);
       
@@ -1718,6 +1759,15 @@
     }
 
     function parseRecipeHtml(html, url) {
+      const errorIndicators = ['access denied', 'toegang geweigerd', 'verboden toegang'];
+      const lowerHtml = html.toLowerCase();
+      
+      for (const indicator of errorIndicators) {
+        if (lowerHtml.includes(indicator)) {
+          return null;
+        }
+      }
+
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
       
@@ -1748,6 +1798,10 @@
 
       if (recipe.ingredients.length === 0) {
         recipe.ingredients = extractIngredientsFromHtml(doc);
+      }
+
+      if (!recipe.name || recipe.name.length < 3) {
+        return null;
       }
 
       if (recipe.ingredients.length === 0) {
@@ -2349,12 +2403,19 @@
       const plannedContainer = document.getElementById('plannedGroceries');
 
       const today = new Date();
-      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-      const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      today.setHours(0, 0, 0, 0);
+      
+      const currentDay = today.getDay();
+      const daysUntilWednesday = currentDay <= 3 ? 3 - currentDay : 10 - currentDay;
+      const startDate = new Date(today);
+      startDate.setDate(today.getDate() + daysUntilWednesday);
+      
+      const endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + 6);
 
       const ingredientsMap = {};
 
-      for (let d = new Date(startOfMonth); d <= endOfMonth; d.setDate(d.getDate() + 1)) {
+      for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
         const dateStr = formatDate(d);
         const recipeId = Store.mealPlan[dateStr];
         
@@ -2388,6 +2449,10 @@
         plannedSection.style.display = 'none';
         return;
       }
+
+      const weekLabel = document.getElementById('plannedWeekLabel');
+      const formatter = new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'short' });
+      weekLabel.textContent = `${formatter.format(startDate)} - ${formatter.format(endDate)} (wo-di)`;
 
       plannedSection.style.display = 'block';
       renderPlannedGroceries();

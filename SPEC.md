@@ -71,11 +71,12 @@ Drie hoofdsecties via tab-navigatie:
 - **Opslag:** LocalStorage voor persistentie
 
 #### URL Import Details
-- Gebruikt CORS proxy (corsproxy.io) om externe pagina's te laden
+- Gebruikt meerdere CORS proxies met fallback
 - Parseert JSON-LD schema (standaard receptformaat)
 - Valideert en extraheert: naam, bereidingstijd, porties, ingrediënten
-- Fallback naar HTML parsing als geen JSON-LD aanwezig is
-- Laat gebruiker handmatig aanvullen als parsing incompleet is
+- Toont foutmelding bij geblokkeerde websites (AH, Jumbo)
+- "Handmatig toevoegen" knop voor handmatige invoer
+- Ondersteunde websites: smulweb.nl, lekkerensimpel.com, allrecipes.com
 
 ### 2. Maand Planner
 - **Weergave:** Kalender-grid voor huidige maand
@@ -91,7 +92,8 @@ Drie hoofdsecties via tab-navigatie:
 - **Bewerken:** Klik op naam of hoeveelheid om te wijzigen
 - **Aanvinken:** Checkbox voor gekochte items (lokaal opgeslagen)
 - **Verwijderen:** X-knop om items te verwijderen
-- **Auto-genereren:** Op basis van geplande recepten in huidige maand
+- **Auto-genereren:** Op basis van geplande recepten voor komende woensdag tot dinsdag
+- **Week weergave:** Toont datumbereik in koptekst (bijv. "15 jan - 21 jan (wo-di)")
 - **Geplande boodschappen bewerken:** Verander aantallen of verwijder individuele items
 - **Alles wissen knop:** Verwijder alle geplande boodschappen in één klik
 - **Exporteren:** Print-vriendelijke weergave
