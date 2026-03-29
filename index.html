@@ -1639,7 +1639,7 @@
 
       let html = `
         <div style="margin-bottom: 16px;">
-          <strong>⏱️ Bereidingstijd:</strong> ${recipe.prepTime} min &nbsp;&nbsp;
+          <strong>⏱️ Bereidingstijd:</strong> ${recipe.prep_time} min &nbsp;&nbsp;
           <strong>👥 Porties:</strong> ${recipe.servings}
         </div>
         <h4 style="margin: 16px 0 8px;">Ingrediënten</h4>
@@ -1779,7 +1779,7 @@
         
         if (recipe) {
           document.getElementById('recipeName').value = recipe.name || '';
-          document.getElementById('recipePrepTime').value = recipe.prepTime || '';
+          document.getElementById('recipePrepTime').value = recipe.prep_time || '';
           document.getElementById('recipeServings').value = recipe.servings || 2;
           
           const ingredientsList = document.getElementById('ingredientsList');
@@ -1886,7 +1886,7 @@
       recipe.instructions = instructionLines.join('\n');
 
       document.getElementById('recipeName').value = recipe.name || '';
-      document.getElementById('recipePrepTime').value = recipe.prepTime || '';
+      document.getElementById('recipePrepTime').value = recipe.prep_time || '';
       document.getElementById('recipeServings').value = recipe.servings || 2;
       document.getElementById('recipeInstructions').value = recipe.instructions || '';
 
@@ -2145,7 +2145,7 @@
           </div>
           <h3 class="recipe-name">${recipe.name}</h3>
           <div class="recipe-meta">
-            <span>⏱️ ${recipe.prepTime} min</span>
+            <span>⏱️ ${recipe.prep_time} min</span>
             <span>👥 ${recipe.servings} pers</span>
           </div>
           <p class="recipe-ingredients">
@@ -2209,7 +2209,7 @@
           document.getElementById('recipeId').value = recipe.id;
           document.getElementById('recipeName').value = recipe.name;
           document.getElementById('recipeCategory').value = recipe.category;
-          document.getElementById('recipePrepTime').value = recipe.prepTime;
+          document.getElementById('recipePrepTime').value = recipe.prep_time;
           document.getElementById('recipeServings').value = recipe.servings;
           document.getElementById('recipeInstructions').value = recipe.instructions || '';
           recipe.ingredients.forEach(ing => addIngredientField(ing));
@@ -2245,7 +2245,7 @@
       const id = document.getElementById('recipeId').value;
       const name = document.getElementById('recipeName').value.trim();
       const category = document.getElementById('recipeCategory').value;
-      const prepTime = parseInt(document.getElementById('recipePrepTime').value);
+      const prep_time = parseInt(document.getElementById('recipePrepTime').value);
       const servings = parseInt(document.getElementById('recipeServings').value);
       const instructions = document.getElementById('recipeInstructions').value.trim();
 
@@ -2266,13 +2266,13 @@
 
       if (id) {
         const index = Store.recipes.findIndex(r => r.id === id);
-        Store.recipes[index] = { id, name, category, prepTime, servings, ingredients, instructions };
+        Store.recipes[index] = { id, name, category, prep_time, servings, ingredients, instructions };
       } else {
         Store.recipes.push({
           id: Store.generateId(),
           name,
           category,
-          prepTime,
+          prep_time,
           servings,
           ingredients,
           instructions
@@ -2384,7 +2384,7 @@
             <span>${categoryEmoji[recipe.category]}</span>
             <div>
               <div class="recipe-select-name">${recipe.name}</div>
-              <div class="recipe-select-meta">⏱️ ${recipe.prepTime} min • 👥 ${recipe.servings} pers</div>
+              <div class="recipe-select-meta">⏱️ ${recipe.prep_time} min • 👥 ${recipe.servings} pers</div>
             </div>
           </div>
         `).join('');
