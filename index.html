@@ -927,6 +927,21 @@
       border-color: var(--primary);
     }
 
+    .url-import-section textarea {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-family: inherit;
+      resize: vertical;
+    }
+
+    .url-import-section textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
     .url-hint {
       font-size: 12px;
       color: var(--text-secondary);
@@ -1232,6 +1247,12 @@
               </button>
             </div>
             <p class="url-hint">Plak een link naar een recept en wij halen de ingrediënten automatisch eruit. Werkt met smulweb.nl, lekkerensimpel.com en allrecipes.com.</p>
+            <div class="divider" style="margin: 16px 0;"></div>
+            <label for="recipeText">Of plak hier de recept tekst</label>
+            <textarea id="recipeText" rows="5" placeholder="Plak hier de volledige recepttekst (naam, ingrediëntenlijst en bereidingswijze)..."></textarea>
+            <button type="button" class="btn btn-secondary" id="parseTextBtn" style="margin-top: 8px;">
+              📋 Tekst Verwerken
+            </button>
           </div>
           <div class="divider" id="urlDivider"></div>
           <div class="form-group">
@@ -1263,6 +1284,10 @@
             <button type="button" class="btn btn-secondary add-ingredient-btn" id="addIngredient">
               + Ingrediënt Toevoegen
             </button>
+          </div>
+          <div class="form-group">
+            <label for="recipeInstructions">Bereidingswijze</label>
+            <textarea id="recipeInstructions" rows="4" placeholder="Beschrijf de bereidingsstappen..."></textarea>
           </div>
         </form>
       </div>
@@ -1300,6 +1325,18 @@
           <button class="btn btn-secondary" id="confirmCancel">Annuleren</button>
           <button class="btn btn-danger" id="confirmOk">Verwijderen</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recipe Details Modal -->
+  <div class="modal-overlay" id="recipeDetailsModal">
+    <div class="modal" style="max-width: 600px;">
+      <div class="modal-header">
+        <h3 id="recipeDetailsTitle">Recept Details</h3>
+        <button class="modal-close" id="closeRecipeDetails">×</button>
+      </div>
+      <div class="modal-body" id="recipeDetailsBody">
       </div>
     </div>
   </div>
@@ -1589,6 +1626,48 @@
       Store.plannedGroceries = LocalStore.plannedGroceries;
     }
 
+    // Recipe Details Modal
+    function showRecipeDetails(recipeId) {
+      const recipe = Store.recipes.find(r => r.id === recipeId);
+      if (!recipe) return;
+
+      const modal = document.getElementById('recipeDetailsModal');
+      const title = document.getElementById('recipeDetailsTitle');
+      const body = document.getElementById('recipeDetailsBody');
+
+      title.textContent = `${categoryEmoji[recipe.category]} ${recipe.name}`;
+
+      let html = `
+        <div style="margin-bottom: 16px;">
+          <strong>⏱️ Bereidingstijd:</strong> ${recipe.prepTime} min &nbsp;&nbsp;
+          <strong>👥 Porties:</strong> ${recipe.servings}
+        </div>
+        <h4 style="margin: 16px 0 8px;">Ingrediënten</h4>
+        <ul style="margin: 0 0 16px 20px; padding: 0;">
+          ${recipe.ingredients.map(i => `<li style="margin-bottom: 4px;">${i.amount} ${i.unit} ${i.name}</li>`).join('')}
+        </ul>
+      `;
+
+      if (recipe.instructions) {
+        html += `
+          <h4 style="margin: 16px 0 8px;">Bereidingswijze</h4>
+          <div style="white-space: pre-wrap; line-height: 1.6;">${recipe.instructions}</div>
+        `;
+      }
+
+      body.innerHTML = html;
+      modal.classList.add('active');
+    }
+
+    document.getElementById('closeRecipeDetails').addEventListener('click', () => {
+      document.getElementById('recipeDetailsModal').classList.remove('active');
+    });
+    document.getElementById('recipeDetailsModal').addEventListener('click', (e) => {
+      if (e.target.classList.contains('modal-overlay')) {
+        document.getElementById('recipeDetailsModal').classList.remove('active');
+      }
+    });
+
     // Navigation
     function initNavigation() {
       document.querySelectorAll('.nav-tab').forEach(tab => {
@@ -1611,6 +1690,7 @@
       document.getElementById('saveRecipe').addEventListener('click', saveRecipe);
       document.getElementById('addIngredient').addEventListener('click', addIngredientField);
       document.getElementById('fetchRecipeBtn').addEventListener('click', fetchRecipeFromUrl);
+      document.getElementById('parseTextBtn').addEventListener('click', parseRecipeFromText);
 
       document.getElementById('recipeUrl').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') fetchRecipeFromUrl();
@@ -1738,6 +1818,104 @@
       statusEl.textContent = message;
     }
 
+    function parseRecipeFromText() {
+      const textInput = document.getElementById('recipeText');
+      const text = textInput.value.trim();
+
+      if (!text) {
+        showUrlStatus('error', 'Vul eerst recepttekst in');
+        return;
+      }
+
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      
+      if (lines.length === 0) {
+        showUrlStatus('error', 'Geen tekst gevonden');
+        return;
+      }
+
+      const recipe = {
+        name: '',
+        prepTime: '',
+        servings: 2,
+        ingredients: [],
+        instructions: ''
+      };
+
+      const ingredientSectionKeywords = ['ingredienten', 'benodigdheden', 'wat heb je nodig', 'materialen', 'nodig'];
+      const instructionSectionKeywords = ['bereiding', 'bereidingswijze', 'instructie', 'stappen', 'bereid', 'how to', 'instructions', 'directions', 'bereid je voor', 'bereidingsstappen'];
+
+      const nonIngredientKeywords = ['bereiding', 'verwarm', 'oventijd', 'in de oven', 'stap', 'keuken', 'personen', 'minuten', 'uur', 'graden', ' Serveer', 'Garneer', 'Dien'];
+
+      let currentSection = 'unknown';
+      const instructionLines = [];
+      const ingredientLines = [];
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const lowerLine = line.toLowerCase();
+
+        if (i === 0) {
+          recipe.name = line;
+          continue;
+        }
+
+        if (line.match(/^#+\s/) || line.match(/^(bereidingstijd|recept voor|oventijd|in de oven):/i)) {
+          continue;
+        }
+
+        const isIngredientSection = ingredientSectionKeywords.some(kw => lowerLine.includes(kw));
+        const isInstructionSection = instructionSectionKeywords.some(kw => lowerLine.includes(kw));
+
+        if (isIngredientSection) {
+          currentSection = 'ingredients';
+          continue;
+        }
+
+        if (isInstructionSection) {
+          currentSection = 'instructions';
+          continue;
+        }
+
+        if (currentSection === 'ingredients') {
+          const hasNonIngredientKeyword = nonIngredientKeywords.some(kw => lowerLine.includes(kw));
+          const isBulletPoint = line.startsWith('•') || line.startsWith('-') || line.startsWith('*');
+          const cleanedLine = line.replace(/^[•\-*]\s*/, '');
+          
+          if (!hasNonIngredientKeyword && cleanedLine.length > 2 && cleanedLine.length < 150) {
+            ingredientLines.push(cleanedLine);
+          }
+        } else if (currentSection === 'instructions') {
+          if (line.length > 5) {
+            instructionLines.push(line);
+          }
+        }
+      }
+
+      recipe.ingredients = ingredientLines.map(l => parseIngredientString(l));
+      recipe.instructions = instructionLines.join('\n');
+
+      document.getElementById('recipeName').value = recipe.name || '';
+      document.getElementById('recipePrepTime').value = recipe.prepTime || '';
+      document.getElementById('recipeServings').value = recipe.servings || 2;
+      document.getElementById('recipeInstructions').value = recipe.instructions || '';
+
+      const ingredientsList = document.getElementById('ingredientsList');
+      ingredientsList.innerHTML = '';
+      if (recipe.ingredients && recipe.ingredients.length > 0) {
+        recipe.ingredients.forEach(ing => addIngredientField(ing));
+      } else {
+        addIngredientField({ amount: '', unit: '', name: '' });
+      }
+
+      if (ingredientLines.length === 0 && instructionLines.length === 0) {
+        showUrlStatus('error', 'Kon ingrediënten en bereidingswijze niet automatisch onderscheiden. Vul ze handmatig in.');
+      } else {
+        const msg = recipe.ingredients.length + ' ingrediënten, ' + (recipe.instructions ? 'bereidingswijze toegevoegd' : 'geen bereidingswijze gevonden');
+        showUrlStatus('success', `✓ Recept "${recipe.name}" verwerkt! (${msg})`);
+      }
+    }
+
     function parseRecipeHtml(html, url) {
       const errorIndicators = ['access denied', 'toegang geweigerd', 'verboden toegang'];
       const lowerHtml = html.toLowerCase();
@@ -1852,7 +2030,7 @@
     function parseIngredientString(str) {
       str = str.trim();
       
-      const match = str.match(/^([\d\s\/.,]+)?\s*(cups?|tbsp?|tsp?|oz|lbs?|pounds?|grams?|kg|ml|l|cloves?|bunch|can|package|pkg|bottles?|heads?|stalks?|slices?|pieces?|stuk|lepel|gram|ml|liter)?\s*(.+)?$/i);
+      const match = str.match(/^([\d\s\/.,]+)?\s*(cups?|tbsp?|tsp?|oz|lbs?|pounds?|grams?|kg|ml|l|cloves?|bunch|can|package|pkg|bottles?|heads?|stalks?|slices?|pieces?|stuk|lepel|el|g|gr|tl|eetlepel|gram|gram|kilo|milliliter|liter|stuks?)?\s*(.+)?$/i);
       
       if (match) {
         return {
@@ -1984,8 +2162,16 @@
             ${recipe.ingredients.slice(0, 3).map(i => `${i.amount} ${i.unit} ${i.name}`).join(', ')}
             ${recipe.ingredients.length > 3 ? ` +${recipe.ingredients.length - 3} meer` : ''}
           </p>
+          ${recipe.instructions ? `<button class="view-recipe-btn" data-id="${recipe.id}">📖 Bekijk recept</button>` : ''}
         </div>
       `).join('');
+
+      grid.querySelectorAll('.view-recipe-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showRecipeDetails(btn.dataset.id);
+        });
+      });
 
       grid.querySelectorAll('.edit-recipe').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -2035,6 +2221,7 @@
           document.getElementById('recipeCategory').value = recipe.category;
           document.getElementById('recipePrepTime').value = recipe.prepTime;
           document.getElementById('recipeServings').value = recipe.servings;
+          document.getElementById('recipeInstructions').value = recipe.instructions || '';
           recipe.ingredients.forEach(ing => addIngredientField(ing));
         }
       } else {
@@ -2070,14 +2257,15 @@
       const category = document.getElementById('recipeCategory').value;
       const prepTime = parseInt(document.getElementById('recipePrepTime').value);
       const servings = parseInt(document.getElementById('recipeServings').value);
+      const instructions = document.getElementById('recipeInstructions').value.trim();
 
       const ingredients = [];
       document.querySelectorAll('.ingredient-item').forEach(item => {
         const amount = item.querySelector('.amount').value.trim();
         const unit = item.querySelector('.unit').value.trim();
-        const name = item.querySelector('.name').value.trim();
-        if (name) {
-          ingredients.push({ amount, unit, name });
+        const ingName = item.querySelector('.name').value.trim();
+        if (ingName) {
+          ingredients.push({ amount, unit, name: ingName });
         }
       });
 
@@ -2088,7 +2276,7 @@
 
       if (id) {
         const index = Store.recipes.findIndex(r => r.id === id);
-        Store.recipes[index] = { id, name, category, prepTime, servings, ingredients };
+        Store.recipes[index] = { id, name, category, prepTime, servings, ingredients, instructions };
       } else {
         Store.recipes.push({
           id: Store.generateId(),
@@ -2096,7 +2284,8 @@
           category,
           prepTime,
           servings,
-          ingredients
+          ingredients,
+          instructions
         });
       }
 
@@ -2447,7 +2636,7 @@
             <div class="shopping-item">
               <span class="drag-handle">⋮⋮</span>
               <input type="checkbox" ${item.checked ? 'checked' : ''} data-index="${index}" class="planned-checkbox">
-              <input type="text" class="item-amount" value="${item.amount}" data-index="${index}" placeholder="Aantal">
+              <input type="text" class="item-amount" value="${item.amount}${item.unit ? ' ' + item.unit : ''}" data-index="${index}" placeholder="Aantal">
               <input type="text" class="item-name" value="${item.name}" data-index="${index}">
               <button class="delete-item" data-index="${index}" title="Verwijderen">×</button>
             </div>
