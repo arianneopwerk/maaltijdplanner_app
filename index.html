@@ -1191,7 +1191,7 @@
       <div class="modal-body">
         <form id="recipeForm">
           <input type="hidden" id="recipeId">
-          <div class="url-import-section" id="urlImportSection">
+          <div id="urlImportSection" style="display: block;">
             <label for="recipeUrl">Recept importeren van URL</label>
             <div class="url-input-row">
               <input type="url" id="recipeUrl" placeholder="https://example.com/recept">
@@ -1563,8 +1563,8 @@
 
     // Recipe Events
     function initRecipeEvents() {
-      document.getElementById('addRecipeBtn').addEventListener('click', openRecipeModal);
-      document.getElementById('emptyAddRecipeBtn').addEventListener('click', openRecipeModal);
+      document.getElementById('addRecipeBtn').addEventListener('click', () => openRecipeModal());
+      document.getElementById('emptyAddRecipeBtn').addEventListener('click', () => openRecipeModal());
       document.getElementById('closeRecipeModal').addEventListener('click', closeRecipeModal);
       document.getElementById('cancelRecipe').addEventListener('click', closeRecipeModal);
       document.getElementById('saveRecipe').addEventListener('click', saveRecipe);
@@ -1628,13 +1628,12 @@
       text.textContent = 'Laden...';
 
       try {
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
         const response = await fetch(proxyUrl);
         
         if (!response.ok) throw new Error('Fetch failed');
         
-        const data = await response.json();
-        const html = data.contents;
+        const html = await response.text();
         
         const recipe = parseRecipeHtml(html, url);
         
