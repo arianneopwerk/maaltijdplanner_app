@@ -1842,47 +1842,32 @@
         instructions: ''
       };
 
-      const ingredientSectionKeywords = ['ingredienten', 'benodigdheden', 'wat heb je nodig', 'materialen', 'nodig'];
-      const instructionSectionKeywords = ['bereiding', 'bereidingswijze', 'instructie', 'stappen', 'bereid', 'how to', 'instructions', 'directions', 'bereid je voor', 'bereidingsstappen'];
+      const instructionSectionKeywords = ['bereiding', 'bereidingswijze', 'bereidingsstappen', 'instructie', 'stappen', 'bereid', 'how to', 'instructions', 'directions', 'bereid je voor', 'bereidingswijze'];
 
-      const nonIngredientKeywords = ['bereiding', 'verwarm', 'oventijd', 'in de oven', 'stap', 'keuken', 'personen', 'minuten', 'uur', 'graden', ' Serveer', 'Garneer', 'Dien'];
+      recipe.name = lines[0];
 
-      let currentSection = 'unknown';
+      let currentSection = 'ingredients';
       const instructionLines = [];
       const ingredientLines = [];
 
-      for (let i = 0; i < lines.length; i++) {
+      for (let i = 1; i < lines.length; i++) {
         const line = lines[i];
         const lowerLine = line.toLowerCase();
 
-        if (i === 0) {
-          recipe.name = line;
-          continue;
-        }
-
-        if (line.match(/^#+\s/) || line.match(/^(bereidingstijd|recept voor|oventijd|in de oven):/i)) {
-          continue;
-        }
-
-        const isIngredientSection = ingredientSectionKeywords.some(kw => lowerLine.includes(kw));
-        const isInstructionSection = instructionSectionKeywords.some(kw => lowerLine.includes(kw));
-
-        if (isIngredientSection) {
-          currentSection = 'ingredients';
-          continue;
-        }
-
-        if (isInstructionSection) {
+        if (line.match(/^(bereiding|bereidingswijze|bereidingsstappen|instructie|stappen|bereid|how to|instructions|directions|serveeridee|garneer)/i)) {
           currentSection = 'instructions';
           continue;
         }
 
+        if (line.match(/^stap\s*\d+/i)) {
+          currentSection = 'instructions';
+        }
+
         if (currentSection === 'ingredients') {
-          const hasNonIngredientKeyword = nonIngredientKeywords.some(kw => lowerLine.includes(kw));
-          const isBulletPoint = line.startsWith('•') || line.startsWith('-') || line.startsWith('*');
-          const cleanedLine = line.replace(/^[•\-*]\s*/, '');
+          const hasVerb = /\b(verwarm|verhit|bak|breng|voeg|snijd|roer|meng|laat|zet|haal|plaats|stoom|gril|kook|fruit|knip|pel|rasp|bewerk|vouw|druk|stamp|klop|rol|smeer|bestrijk|garneer|serveer|dien|draai|keer)/i.test(lowerLine);
+          const cleanedLine = line.replace(/^[•\-*]\s*/, '').trim();
           
-          if (!hasNonIngredientKeyword && cleanedLine.length > 2 && cleanedLine.length < 150) {
+          if (!hasVerb && cleanedLine.length > 1 && cleanedLine.length < 150) {
             ingredientLines.push(cleanedLine);
           }
         } else if (currentSection === 'instructions') {
